@@ -8,28 +8,36 @@ import (
 	cmder "github.com/yaegashi/cobra-cmder"
 )
 
-type AppListAccounts struct {
+type AppAccounts struct {
 	*App
 }
 
-func (app *App) ListAccountsCmder() cmder.Cmder {
-	return &AppListAccounts{App: app}
+func (app *App) AppAccountsCmder() cmder.Cmder {
+	return &AppAccounts{App: app}
 }
 
-func (app *AppListAccounts) Cmd() *cobra.Command {
+func (app *AppAccounts) Cmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "list-accounts",
-		Short:        "List accounts you can have access to",
+		Use:          "accounts",
+		Aliases:      []string{"a"},
+		Short:        "List billing accounts you have access to",
 		RunE:         app.RunE,
 		SilenceUsage: true,
 	}
 	return cmd
 }
 
-func (app *AppListAccounts) RunE(cmd *cobra.Command, args []string) error {
+func (app *AppAccounts) RunE(cmd *cobra.Command, args []string) error {
+	authorizer, err := app.Authorize()
+	if err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 	accountsClient := billing.NewAccountsClient("")
-	accountsClient.Authorizer = app.Authorizer
+	accountsClient.Authorizer = authorizer
+
+	app.Logf("Requesting with %T", accountsClient)
 
 	r, err := accountsClient.ListComplete(ctx, "")
 	if err != nil {
@@ -42,9 +50,12 @@ func (app *AppListAccounts) RunE(cmd *cobra.Command, args []string) error {
 	}
 	defer app.Close()
 
-	type account billing.Account
 	for r.NotDone() {
-		app.JSONMarshal(account(r.Value()))
+		type account billing.Account
+		err = app.Marshal(account(r.Value()))
+		if err != nil {
+			return err
+		}
 		err = r.NextWithContext(ctx)
 		if err != nil {
 			return err

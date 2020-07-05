@@ -2,17 +2,15 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"sort"
 
 	"github.com/spf13/cobra"
 	"github.com/yaegashi/azbill/azure-sdk-for-go/services/consumption/mgmt/2019-10-01/consumption"
 	cmder "github.com/yaegashi/cobra-cmder"
 )
 
-type AppListUsageDetails struct {
+type AppUsageDetails struct {
 	*App
 	Scope          string
 	BillingAccount string
@@ -22,30 +20,36 @@ type AppListUsageDetails struct {
 	EndDate        string
 }
 
-func (app *App) ListUsageDetailsCmder() cmder.Cmder {
-	return &AppListUsageDetails{App: app}
+func (app *App) AppUsageDetailsCmder() cmder.Cmder {
+	return &AppUsageDetails{App: app}
 }
 
-func (app *AppListUsageDetails) Cmd() *cobra.Command {
+func (app *AppUsageDetails) Cmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "list-usage-details",
+		Use:          "usage-details",
+		Aliases:      []string{"u"},
 		Short:        "List usage details",
 		RunE:         app.RunE,
 		SilenceUsage: true,
 	}
 	cmd.Flags().StringVarP(&app.Scope, "scope", "", "", "Scope")
-	cmd.Flags().StringVarP(&app.BillingAccount, "billing-account", "A", "", "Billing account")
-	cmd.Flags().StringVarP(&app.BillingPeriod, "billing-period", "P", "", "Billing period")
-	cmd.Flags().StringVarP(&app.Subscription, "subscription", "S", "", "Subscription")
-	cmd.Flags().StringVarP(&app.StartDate, "start-date", "", "", "Start date")
-	cmd.Flags().StringVarP(&app.EndDate, "end-date", "", "", "Start date")
+	cmd.Flags().StringVarP(&app.BillingAccount, "billing-account", "A", "", "billing account")
+	cmd.Flags().StringVarP(&app.BillingPeriod, "billing-period", "P", "", "billing period")
+	cmd.Flags().StringVarP(&app.Subscription, "subscription", "S", "", "subscription")
+	cmd.Flags().StringVarP(&app.StartDate, "start", "", "", "start date (YYYY-MM-DD)")
+	cmd.Flags().StringVarP(&app.EndDate, "end", "", "", "end date (YYYY-MM-DD)")
 	return cmd
 }
 
-func (app *AppListUsageDetails) RunE(cmd *cobra.Command, args []string) error {
+func (app *AppUsageDetails) RunE(cmd *cobra.Command, args []string) error {
+	authorizer, err := app.Authorize()
+	if err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 	usageDetailsClient := consumption.NewUsageDetailsClient("")
-	usageDetailsClient.Authorizer = app.Authorizer
+	usageDetailsClient.Authorizer = authorizer
 
 	scope := app.Scope
 	if app.BillingAccount != "" {
@@ -82,49 +86,16 @@ func (app *AppListUsageDetails) RunE(cmd *cobra.Command, args []string) error {
 	}
 	defer app.Close()
 
-	var keys []string
-	if app.Format == "csv" {
-		m, _ := flattenToMap(consumption.LegacyUsageDetail{}, false)
-		for key := range m {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		app.CSVMarshal(keys)
-	}
-
 	for r.NotDone() {
-		x, _ := r.Value().AsLegacyUsageDetail()
-		if app.Format == "csv" {
-			row := []string{}
-			m, err := flattenToMap(x, true)
-			if err == nil {
-				for _, key := range keys {
-					col := ""
-					if val, ok := m[key]; ok {
-						if tags, ok := val.(map[string]*string); ok {
-							if tags != nil {
-								b, _ := json.Marshal(val)
-								col = string(b)
-							}
-						} else {
-							col = fmt.Sprint(val)
-						}
-					}
-					row = append(row, col)
-				}
-				err = app.CSVMarshal(row)
-			}
-		} else if app.Flatten {
-			m, err := flattenToMap(x, true)
-			if err == nil {
-				err = app.JSONMarshal(m)
+		x := r.Value()
+		if v, ok := x.AsLegacyUsageDetail(); ok {
+			type LegacyUsageDetail consumption.LegacyUsageDetail
+			err = app.Marshal((*LegacyUsageDetail)(v))
+			if err != nil {
+				return err
 			}
 		} else {
-			type LegacyUsageDetail consumption.LegacyUsageDetail
-			err = app.JSONMarshal((*LegacyUsageDetail)(x))
-		}
-		if err != nil {
-			return err
+			return fmt.Errorf("Unexpected type %T", x)
 		}
 		err = r.NextWithContext(ctx)
 		if err != nil {

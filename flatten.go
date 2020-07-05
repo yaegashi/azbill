@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"unicode"
 
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/shopspring/decimal"
@@ -12,7 +13,7 @@ import (
 var timeType = reflect.TypeOf(date.Time{})
 var decimalType = reflect.TypeOf(decimal.Decimal{})
 
-func flattenToMapRec(v reflect.Value, omit bool, m map[string]interface{}) error {
+func flattenToMapRec(v reflect.Value, prefix string, omit bool, m map[string]interface{}) error {
 	for v.Kind() == reflect.Ptr {
 		if v.IsNil() {
 			v = reflect.Zero(v.Type().Elem())
@@ -25,8 +26,14 @@ fieldLoop:
 	for i := 0; i < v.NumField(); i++ {
 		ft := t.Field(i)
 		name := ft.Name
+		if !unicode.IsUpper(rune(name[0])) {
+			continue
+		}
 		if tag, ok := ft.Tag.Lookup("json"); ok {
 			name = strings.Split(tag, ",")[0]
+			if name == "-" {
+				continue
+			}
 		}
 		fv := v.Field(i)
 		for fv.Kind() == reflect.Ptr {
@@ -40,9 +47,9 @@ fieldLoop:
 			fv = fv.Elem()
 		}
 		if fv.Type() != timeType && fv.Type() != decimalType && fv.Kind() == reflect.Struct {
-			flattenToMapRec(fv, omit, m)
+			flattenToMapRec(fv, prefix+name+".", omit, m)
 		} else {
-			m[name] = fv.Interface()
+			m[prefix+name] = fv.Interface()
 		}
 	}
 	return nil
@@ -57,7 +64,7 @@ func flattenToMap(x interface{}, omit bool) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("input type should be struct, got %T", x)
 	}
 	m := map[string]interface{}{}
-	err := flattenToMapRec(reflect.ValueOf(x), omit, m)
+	err := flattenToMapRec(reflect.ValueOf(x), "", omit, m)
 	if err != nil {
 		return nil, err
 	}

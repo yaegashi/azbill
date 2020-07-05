@@ -7,65 +7,107 @@ import (
 	"io"
 	"log"
 	"os"
+	"reflect"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
-	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 	"github.com/yaegashi/azbill/store"
 )
 
 const (
-	AppClientID    = "4a034c56-da44-48ce-90db-039a408974bd"
-	AppTenantID    = "common"
-	ProgressScale  = 100
-	ProgressColumn = 50
-	AuthStoreEnv   = "AZBILL_AUTH_STORE"
+	ProgressScale    = 100
+	ProgressColumn   = 50
+	defaultClientID  = "4a034c56-da44-48ce-90db-039a408974bd"
+	defaultTenantID  = "common"
+	environConfigDir = "AZBILL_CONFIG_DIR"
+	defaultConfigDir = "~/.azbill"
+	environAuth      = "AZBILL_AUTH"
+	defaultAuth      = "dev"
+	environAuthFile  = "AZBILL_AUTH_FILE"
+	defaultAuthFile  = "auth_file.json"
+	environAuthDev   = "AZBILL_AUTH_DEV"
+	defaultAuthDev   = "auth_dev.json"
+	environFormat    = "AZBILL_FORMAT"
+	defaultFormat    = "csv"
 )
 
 type App struct {
-	Authorizer autorest.Authorizer
-	Writer     io.WriteCloser
-	CSVWriter  *csv.Writer
-	Output     string
-	Auth       string
-	AuthStore  string
-	Client     string
-	Tenant     string
-	Format     string
-	Flatten    bool
-	Pretty     bool
-	IsStdout   bool
-	Quiet      bool
-	Lines      int
-	Column     int
+	Writer      io.WriteCloser
+	CSVWriter   *csv.Writer
+	ConfigStore *store.Store
+	ConfigDir   string
+	Output      string
+	Auth        string
+	AuthDev     string
+	AuthFile    string
+	Client      string
+	Tenant      string
+	Format      string
+	Flatten     bool
+	Pretty      bool
+	IsStdout    bool
+	Quiet       bool
+	Records     int
+	Column      int
+	Keys        []string
+	StartTime   time.Time
 }
 
 func (app *App) Cmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "azbill",
-		Short:             "Download Azure billing information",
+		Short:             "Azure billing data exporter",
 		PersistentPreRunE: app.PersistentPreRunE,
 		SilenceUsage:      true,
 	}
-	cmd.PersistentFlags().StringVarP(&app.Client, "client", "", AppClientID, "Azure app client")
-	cmd.PersistentFlags().StringVarP(&app.Tenant, "tenant", "", AppTenantID, "Azure tenant")
-	cmd.PersistentFlags().StringVarP(&app.Auth, "auth", "", "dev", "Auth source [dev,env,file=PATH,cli]")
-	cmd.PersistentFlags().StringVarP(&app.AuthStore, "auth-store", "", "", "Auth persistent token store")
-	cmd.PersistentFlags().StringVarP(&app.Format, "format", "", "csv", "Output format [csv,json,flatten,pretty]")
-	cmd.PersistentFlags().StringVarP(&app.Output, "output", "o", "", "Output file")
-	cmd.PersistentFlags().BoolVarP(&app.Quiet, "quiet", "q", false, "Quiet")
+	cmd.PersistentFlags().StringVarP(&app.ConfigDir, "config-dir", "", "", envHelp("config dir", environConfigDir, defaultConfigDir))
+	cmd.PersistentFlags().StringVarP(&app.Client, "client", "", "", envHelp("Azure client", auth.ClientID, defaultClientID))
+	cmd.PersistentFlags().StringVarP(&app.Tenant, "tenant", "", "", envHelp("Azure tenant", auth.TenantID, defaultTenantID))
+	cmd.PersistentFlags().StringVarP(&app.Auth, "auth", "", "", envHelp("auth source [dev,env,file,cli]", environAuth, defaultAuth))
+	cmd.PersistentFlags().StringVarP(&app.AuthFile, "auth-file", "", "", envHelp("auth file store", environAuthFile, defaultAuthFile))
+	cmd.PersistentFlags().StringVarP(&app.AuthDev, "auth-dev", "", "", envHelp("auth dev store", environAuthDev, defaultAuthDev))
+	cmd.PersistentFlags().StringVarP(&app.Format, "format", "", "", envHelp("output format [csv,json,flatten,pretty]", environFormat, defaultFormat))
+	cmd.PersistentFlags().StringVarP(&app.Output, "output", "o", "", "output file")
+	cmd.PersistentFlags().BoolVarP(&app.Quiet, "quiet", "q", false, "quiet")
 	return cmd
 }
 
-func (app *App) PersistentPreRunE(cmd *cobra.Command, args []string) error {
-	app.IsStdout = app.Output == "" || app.Output == "-"
-	if app.IsStdout && isatty.IsTerminal(os.Stdout.Fd()) {
-		app.Quiet = true
+func envDefault(val, env, def string) string {
+	if val == "" {
+		val = os.Getenv(env)
 	}
+	if val == "" {
+		val = def
+	}
+	return val
+}
+
+func envHelp(msg, env, def string) string {
+	return fmt.Sprintf(`%s (env:%s, default:%s)`, msg, env, def)
+}
+
+func (app *App) PersistentPreRunE(cmd *cobra.Command, args []string) error {
+	app.Client = envDefault(app.Client, auth.ClientID, defaultClientID)
+	app.Tenant = envDefault(app.Tenant, auth.TenantID, defaultTenantID)
+	app.ConfigDir = envDefault(app.ConfigDir, environConfigDir, defaultConfigDir)
+	app.Auth = envDefault(app.Auth, environAuth, defaultAuth)
+	app.AuthDev = envDefault(app.AuthDev, environAuthDev, defaultAuthDev)
+	app.AuthFile = envDefault(app.AuthFile, environAuthFile, defaultAuthFile)
+	app.Format = envDefault(app.Format, environFormat, defaultFormat)
+
+	store, err := store.NewStore(app.ConfigDir)
+	if err != nil {
+		return err
+	}
+	app.ConfigStore = store
+
+	app.IsStdout = app.Output == "" || app.Output == "-"
 
 	for _, f := range strings.Split(strings.ToLower(app.Format), ",") {
 		switch f {
@@ -84,95 +126,69 @@ func (app *App) PersistentPreRunE(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	var authorizer autorest.Authorizer
-	var token *adal.ServicePrincipalToken
-	var err error
-
-	if app.AuthStore == "" {
-		app.AuthStore = os.Getenv(AuthStoreEnv)
-	}
-	if app.AuthStore != "" {
-		err = func() error {
-			b, err := store.Load(app.AuthStore)
-			if err != nil {
-				return nil
-			}
-			err = json.Unmarshal(b, &token)
-			if err != nil {
-				return nil
-			}
-			save := false
-			token.SetRefreshCallbacks([]adal.TokenRefreshCallback{func(adal.Token) error { save = true; return nil }})
-			err = token.EnsureFresh()
-			if err != nil {
-				return nil
-			}
-			if save {
-				b, err = json.Marshal(token)
-				if err != nil {
-					return err
-				}
-				err = store.Save(app.AuthStore, b, 0600)
-				if err != nil {
-					return err
-				}
-			}
-			authorizer = autorest.NewBearerAuthorizer(token)
-			return nil
-		}()
-		if err != nil {
-			return err
-		}
-	}
-
-	if authorizer == nil && app.Auth == "env" {
-		authorizer, err = auth.NewAuthorizerFromEnvironment()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "auth-env: %s\n", err)
-		}
-	}
-
-	if authorizer == nil && strings.HasPrefix(app.Auth, "file=") {
-		os.Setenv("AZURE_AUTH_LOCATION", app.Auth[5:])
-		authorizer, err = auth.NewAuthorizerFromFile(azure.PublicCloud.ResourceManagerEndpoint)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "auth-file: %s\n", err)
-		}
-	}
-
-	if authorizer == nil && app.Auth == "cli" {
-		authorizer, err = auth.NewAuthorizerFromCLI()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "auth-cli: %s\n", err)
-		}
-	}
-
-	if authorizer == nil && app.Auth == "dev" {
-		deviceConfig := auth.NewDeviceFlowConfig(app.Client, app.Tenant)
-		token, err := deviceConfig.ServicePrincipalToken()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "auth-dev: %s\n", err)
-		}
-		if app.AuthStore != "" {
-			b, err := json.Marshal(token)
-			if err != nil {
-				return err
-			}
-			err = store.Save(app.AuthStore, b, 0600)
-			if err != nil {
-				return err
-			}
-		}
-		authorizer = autorest.NewBearerAuthorizer(token)
-	}
-
-	if authorizer == nil {
-		return fmt.Errorf("Failed to configure authorizer")
-	}
-
-	app.Authorizer = authorizer
-
 	return nil
+}
+
+func (app *App) Authorize() (autorest.Authorizer, error) {
+	switch app.Auth {
+	case "env":
+		return auth.NewAuthorizerFromEnvironment()
+	case "file":
+		app.Logf("Loading auth-file config in %s", app.ConfigStore.Location(app.AuthFile, true))
+		os.Setenv("AZURE_AUTH_LOCATION", app.AuthFile)
+		return auth.NewAuthorizerFromFile(azure.PublicCloud.ResourceManagerEndpoint)
+	case "cli":
+		return auth.NewAuthorizerFromCLI()
+	case "dev":
+		var token *adal.ServicePrincipalToken
+		app.Logf("Loading auth-dev token in %s", app.ConfigStore.Location(app.AuthDev, true))
+		b, err := app.ConfigStore.ReadFile(app.AuthDev)
+		if err != nil {
+			app.Logf("Warning: %s", err)
+			return app.AuthorizeDeviceFlow()
+		}
+		err = json.Unmarshal(b, &token)
+		if err != nil {
+			app.Logf("Warning: %s", err)
+			return app.AuthorizeDeviceFlow()
+		}
+		save := false
+		token.SetRefreshCallbacks([]adal.TokenRefreshCallback{func(adal.Token) error { save = true; return nil }})
+		err = token.EnsureFresh()
+		if err != nil {
+			app.Logf("Warning: %s", err)
+			return app.AuthorizeDeviceFlow()
+		}
+		if save {
+			b, err := json.Marshal(token)
+			if err == nil {
+				app.Logf("Saving auth-dev token in %s", app.ConfigStore.Location(app.AuthDev, true))
+				err = app.ConfigStore.WriteFile(app.AuthDev, b, 0600)
+			}
+			if err != nil {
+				app.Logf("Warning: %s", err)
+			}
+		}
+		return autorest.NewBearerAuthorizer(token), nil
+	}
+	return nil, fmt.Errorf("Unknown auth: %s", app.Auth)
+}
+
+func (app *App) AuthorizeDeviceFlow() (autorest.Authorizer, error) {
+	deviceConfig := auth.NewDeviceFlowConfig(app.Client, app.Tenant)
+	token, err := deviceConfig.ServicePrincipalToken()
+	if err != nil {
+		return nil, err
+	}
+	b, err := json.Marshal(token)
+	if err == nil {
+		app.Logf("Saving auth-dev token in %s", app.ConfigStore.Location(app.AuthDev, true))
+		err = app.ConfigStore.WriteFile(app.AuthDev, b, 0600)
+	}
+	if err != nil {
+		app.Logf("Warning: %s", err)
+	}
+	return autorest.NewBearerAuthorizer(token), nil
 }
 
 func (app *App) Open() error {
@@ -199,8 +215,11 @@ func (app *App) Open() error {
 	if app.Format == "csv" {
 		app.CSVWriter = csv.NewWriter(app.Writer)
 		app.CSVWriter.UseCRLF = true
-		app.Writer.Write([]byte{0xef, 0xbb, 0xbf})
+		app.Writer.Write([]byte{0xef, 0xbb, 0xbf}) // UTF-8 BOM
 	}
+	app.Keys = nil
+	app.Records = 0
+	app.StartTime = time.Now()
 	return nil
 }
 
@@ -212,41 +231,54 @@ func (app *App) Close() {
 		app.Writer.Close()
 	}
 	app.Progress(0)
-	app.Log("Done")
+	endTime := time.Now()
+	d := endTime.Sub(app.StartTime)
+	app.Logf("Done %d records in %s, %f records/sec", app.Records, d, float64(app.Records)/d.Seconds())
 }
 
 func (app *App) Progress(n int) {
+	if app.IsStdout {
+		app.Records += n
+		return
+	}
 	if n == 0 {
 		if app.Column > 0 {
 			spaces := ""
 			for i := app.Column; i < ProgressColumn; i++ {
 				spaces += " "
 			}
-			app.Msgf("%s %8d lines\n", spaces, app.Lines)
+			app.Msgf("%s %8d records\n", spaces, app.Records)
 		}
 		return
 	}
-	lines := app.Lines + n
-	blocks := app.Lines / ProgressScale
-	n = (lines / ProgressScale) - blocks
-	app.Lines = lines
+	records := app.Records + n
+	blocks := app.Records / ProgressScale
+	n = (records / ProgressScale) - blocks
+	app.Records = records
 	for i := 0; i < n; i++ {
 		app.Msg(".")
 		app.Column++
 		blocks++
 		if app.Column >= ProgressColumn {
-			app.Msgf(" %8d lines\n", blocks*ProgressScale)
+			app.Msgf(" %8d records\n", blocks*ProgressScale)
 			app.Column = 0
 		}
 	}
 }
 
 func (app *App) JSONMarshal(v interface{}) error {
+	var err error
+	if app.Flatten {
+		v, err = flattenToMap(v, true)
+		if err != nil {
+			return err
+		}
+	}
 	enc := json.NewEncoder(app.Writer)
 	if app.Pretty {
 		enc.SetIndent("", "  ")
 	}
-	err := enc.Encode(v)
+	err = enc.Encode(v)
 	if err != nil {
 		return err
 	}
@@ -254,13 +286,64 @@ func (app *App) JSONMarshal(v interface{}) error {
 	return nil
 }
 
-func (app *App) CSVMarshal(row []string) error {
-	err := app.CSVWriter.Write(row)
+func (app *App) CSVMarshal(v interface{}) error {
+	if app.Keys == nil {
+		m, _ := flattenToMap(v, false)
+		for key := range m {
+			app.Keys = append(app.Keys, key)
+		}
+		sort.Strings(app.Keys)
+		err := app.CSVWriter.Write(app.Keys)
+		if err != nil {
+			return err
+		}
+	}
+	row := []string{}
+	m, err := flattenToMap(v, true)
+	if err != nil {
+		return err
+	}
+	for _, key := range app.Keys {
+		col := ""
+		if val, ok := m[key]; ok {
+			rv := reflect.ValueOf(val)
+			switch rv.Kind() {
+			case reflect.Slice, reflect.Map:
+				if rv.IsNil() {
+					switch rv.Kind() {
+					case reflect.Slice:
+						col = "[]"
+					default:
+						col = "{}"
+					}
+				} else {
+					b, err := json.Marshal(val)
+					if err != nil {
+						return err
+					}
+					col = string(b)
+				}
+			default:
+				col = fmt.Sprint(val)
+			}
+		}
+		row = append(row, col)
+	}
+	err = app.CSVWriter.Write(row)
 	if err != nil {
 		return err
 	}
 	app.Progress(1)
 	return nil
+}
+
+func (app *App) Marshal(v interface{}) error {
+	switch app.Format {
+	case "csv":
+		return app.CSVMarshal(v)
+	default:
+		return app.JSONMarshal(v)
+	}
 }
 
 func (app *App) Write(b []byte) (int, error) {
