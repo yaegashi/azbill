@@ -3,7 +3,7 @@ module github.com/yaegashi/azbill
 go 1.14
 
 require (
-	github.com/Azure/azure-sdk-for-go v43.3.0+incompatible
+	github.com/Azure/azure-sdk-for-go v44.0.0+incompatible
 	github.com/Azure/go-autorest/autorest v0.11.0
 	github.com/Azure/go-autorest/autorest/adal v0.9.0
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.0
@@ -17,6 +17,7 @@ require (
 	github.com/shopspring/decimal v1.2.0
 	github.com/spf13/cobra v1.0.0
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/yaegashi/cobra-cmder v0.0.0-20200624064423-69966a563f7f
+	github.com/yaegashi/cobra-cmder v0.0.1
+	golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 )
