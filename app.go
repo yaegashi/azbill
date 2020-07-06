@@ -65,6 +65,7 @@ func (app *App) Cmd() *cobra.Command {
 		Short:             "Azure billing data exporter",
 		PersistentPreRunE: app.PersistentPreRunE,
 		SilenceUsage:      true,
+		Version:           fmt.Sprintf("%s (%-0.7s)", version, commit),
 	}
 	cmd.PersistentFlags().StringVarP(&app.ConfigDir, "config-dir", "", "", envHelp("config dir", environConfigDir, defaultConfigDir))
 	cmd.PersistentFlags().StringVarP(&app.Client, "client", "", "", envHelp("Azure client", auth.ClientID, defaultClientID))
