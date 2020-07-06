@@ -134,19 +134,21 @@ func (app *App) Authorize() (autorest.Authorizer, error) {
 	case "env":
 		return auth.NewAuthorizerFromEnvironment()
 	case "file":
-		app.Logf("Loading auth-file config in %s", app.ConfigStore.Location(app.AuthFile, true))
+		loc, _ := app.ConfigStore.Location(app.AuthFile, true)
+		app.Logf("Loading auth-file config in %s", loc)
 		os.Setenv("AZURE_AUTH_LOCATION", app.AuthFile)
 		return auth.NewAuthorizerFromFile(azure.PublicCloud.ResourceManagerEndpoint)
 	case "cli":
 		return auth.NewAuthorizerFromCLI()
 	case "dev":
-		var token *adal.ServicePrincipalToken
-		app.Logf("Loading auth-dev token in %s", app.ConfigStore.Location(app.AuthDev, true))
+		loc, _ := app.ConfigStore.Location(app.AuthDev, true)
+		app.Logf("Loading auth-dev token in %s", loc)
 		b, err := app.ConfigStore.ReadFile(app.AuthDev)
 		if err != nil {
 			app.Logf("Warning: %s", err)
 			return app.AuthorizeDeviceFlow()
 		}
+		var token *adal.ServicePrincipalToken
 		err = json.Unmarshal(b, &token)
 		if err != nil {
 			app.Logf("Warning: %s", err)
@@ -162,7 +164,8 @@ func (app *App) Authorize() (autorest.Authorizer, error) {
 		if save {
 			b, err := json.Marshal(token)
 			if err == nil {
-				app.Logf("Saving auth-dev token in %s", app.ConfigStore.Location(app.AuthDev, true))
+				loc, _ := app.ConfigStore.Location(app.AuthDev, true)
+				app.Logf("Saving auth-dev token in %s", loc)
 				err = app.ConfigStore.WriteFile(app.AuthDev, b, 0600)
 			}
 			if err != nil {
@@ -182,7 +185,8 @@ func (app *App) AuthorizeDeviceFlow() (autorest.Authorizer, error) {
 	}
 	b, err := json.Marshal(token)
 	if err == nil {
-		app.Logf("Saving auth-dev token in %s", app.ConfigStore.Location(app.AuthDev, true))
+		loc, _ := app.ConfigStore.Location(app.AuthDev, true)
+		app.Logf("Saving auth-dev token in %s", loc)
 		err = app.ConfigStore.WriteFile(app.AuthDev, b, 0600)
 	}
 	if err != nil {
