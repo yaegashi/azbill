@@ -34,6 +34,7 @@ Flags:
   -o, --output string       output file
   -q, --quiet               quiet
       --tenant string       Azure tenant (env:AZURE_TENANT_ID, default:common)
+  -v, --version             version for azbill
 
 Use "azbill [command] --help" for more information about a command.
 ```
@@ -92,7 +93,7 @@ $ azbill invoices --format pretty -S XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX --star
 For Microsoft Online Service Program accounts: List usage details of June 2020 for subscription XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX into usage.jsonl in flatten and pretty JSONL format:
 
 ```console
-$ azbill usage-details --format flatten,pretty -S XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX --start 2020-06-01 --end 2020-06-30 -o usage.json
+$ azbill usage-details --format flatten,pretty -S XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX --start 2020-06-01 --end 2020-06-30 -o usage.jsonl
 2020/07/06 23:43:59 Loading auth-dev token in /Users/yaegashi/.azbill/auth_dev.json
 2020/07/06 23:43:59 Requesting with consumption.UsageDetailsClient
 2020/07/06 23:43:59    scope: "subscriptions/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
@@ -102,7 +103,7 @@ $ azbill usage-details --format flatten,pretty -S XXXXXXXX-XXXX-XXXX-XXXX-XXXXXX
 2020/07/06 23:44:11 Done 138 records in 16.893702ms, 8168.724653 records/sec
 ```
 
-For Enterprise Agreement accounts: Export usage details of billing period 202006 for billing account 12345678 into usage.csv in CSV format:
+For Enterprise Agreement accounts: Export usage details of billing period 202006 for billing account XXXXXXXX into usage.csv in CSV format:
 
 ```console
 $ azbill usage-details --format csv -A XXXXXXXX -P 202006 -o usage.csv
