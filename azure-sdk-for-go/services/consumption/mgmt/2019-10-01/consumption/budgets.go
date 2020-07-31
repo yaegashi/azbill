@@ -82,7 +82,20 @@ func (client BudgetsClient) CreateOrUpdate(ctx context.Context, scope string, bu
 					{Target: "parameters.BudgetProperties.Filter", Name: validation.Null, Rule: false,
 						Chain: []validation.Constraint{{Target: "parameters.BudgetProperties.Filter.And", Name: validation.Null, Rule: false,
 							Chain: []validation.Constraint{{Target: "parameters.BudgetProperties.Filter.And", Name: validation.MinItems, Rule: 2, Chain: nil}}},
-							{Target: "parameters.BudgetProperties.Filter.Not", Name: validation.Null, Rule: false, Chain: nil},
+							{Target: "parameters.BudgetProperties.Filter.Not", Name: validation.Null, Rule: false,
+								Chain: []validation.Constraint{{Target: "parameters.BudgetProperties.Filter.Not.Dimensions", Name: validation.Null, Rule: false,
+									Chain: []validation.Constraint{{Target: "parameters.BudgetProperties.Filter.Not.Dimensions.Name", Name: validation.Null, Rule: true, Chain: nil},
+										{Target: "parameters.BudgetProperties.Filter.Not.Dimensions.Operator", Name: validation.Null, Rule: true, Chain: nil},
+										{Target: "parameters.BudgetProperties.Filter.Not.Dimensions.Values", Name: validation.Null, Rule: true,
+											Chain: []validation.Constraint{{Target: "parameters.BudgetProperties.Filter.Not.Dimensions.Values", Name: validation.MinItems, Rule: 1, Chain: nil}}},
+									}},
+									{Target: "parameters.BudgetProperties.Filter.Not.Tags", Name: validation.Null, Rule: false,
+										Chain: []validation.Constraint{{Target: "parameters.BudgetProperties.Filter.Not.Tags.Name", Name: validation.Null, Rule: true, Chain: nil},
+											{Target: "parameters.BudgetProperties.Filter.Not.Tags.Operator", Name: validation.Null, Rule: true, Chain: nil},
+											{Target: "parameters.BudgetProperties.Filter.Not.Tags.Values", Name: validation.Null, Rule: true,
+												Chain: []validation.Constraint{{Target: "parameters.BudgetProperties.Filter.Not.Tags.Values", Name: validation.MinItems, Rule: 1, Chain: nil}}},
+										}},
+								}},
 							{Target: "parameters.BudgetProperties.Filter.Dimensions", Name: validation.Null, Rule: false,
 								Chain: []validation.Constraint{{Target: "parameters.BudgetProperties.Filter.Dimensions.Name", Name: validation.Null, Rule: true, Chain: nil},
 									{Target: "parameters.BudgetProperties.Filter.Dimensions.Operator", Name: validation.Null, Rule: true, Chain: nil},
@@ -372,6 +385,9 @@ func (client BudgetsClient) List(ctx context.Context, scope string) (result Budg
 	result.blr, err = client.ListResponder(resp)
 	if err != nil {
 		err = autorest.NewErrorWithError(err, "consumption.BudgetsClient", "List", resp, "Failure responding to request")
+	}
+	if result.blr.hasNextLink() && result.blr.IsEmpty() {
+		err = result.NextWithContext(ctx)
 	}
 
 	return

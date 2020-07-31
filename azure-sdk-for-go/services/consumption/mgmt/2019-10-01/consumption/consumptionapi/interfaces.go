@@ -106,7 +106,7 @@ var _ ReservationRecommendationsClientAPI = (*consumption.ReservationRecommendat
 
 // ReservationRecommendationDetailsClientAPI contains the set of methods on the ReservationRecommendationDetailsClient type.
 type ReservationRecommendationDetailsClientAPI interface {
-	Get(ctx context.Context, scope string) (result consumption.ReservationRecommendationDetailsModel, err error)
+	Get(ctx context.Context, billingScope string, scope consumption.Scope11, region string, term consumption.Term, lookBackPeriod consumption.LookBackPeriod, product string) (result consumption.ReservationRecommendationDetailsModel, err error)
 }
 
 var _ ReservationRecommendationDetailsClientAPI = (*consumption.ReservationRecommendationDetailsClient)(nil)
