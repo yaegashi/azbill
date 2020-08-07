@@ -47,6 +47,7 @@ func NewReservationRecommendationsClientWithBaseURI(baseURI string, subscription
 // Parameters:
 // scope - the scope associated with reservation recommendations operations. This includes
 // '/subscriptions/{subscriptionId}/' for subscription scope,
+// '/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}' for resource group scope,
 // '/providers/Microsoft.Billing/billingAccounts/{billingAccountId}' for BillingAccount scope, and
 // '/providers/Microsoft.Billing/billingAccounts/{billingAccountId}/billingProfiles/{billingProfileId}' for
 // billingProfile scope
@@ -84,6 +85,9 @@ func (client ReservationRecommendationsClient) List(ctx context.Context, scope s
 	result.rrlr, err = client.ListResponder(resp)
 	if err != nil {
 		err = autorest.NewErrorWithError(err, "consumption.ReservationRecommendationsClient", "List", resp, "Failure responding to request")
+	}
+	if result.rrlr.hasNextLink() && result.rrlr.IsEmpty() {
+		err = result.NextWithContext(ctx)
 	}
 
 	return

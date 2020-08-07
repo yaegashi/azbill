@@ -45,13 +45,19 @@ func NewReservationRecommendationDetailsClientWithBaseURI(baseURI string, subscr
 
 // Get details of a reservation recommendation for what-if analysis of reserved instances.
 // Parameters:
-// scope - the scope associated with reservation recommendation details operations. This includes
+// billingScope - the scope associated with reservation recommendation details operations. This includes
 // '/subscriptions/{subscriptionId}/' for subscription scope,
-// '/subscriptions/{subscriptionId}/resourceGroups/{resourceGroup}',
+// '/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}' for resource group scope,
 // /providers/Microsoft.Billing/billingAccounts/{billingAccountId}' for BillingAccount scope, and
 // '/providers/Microsoft.Billing/billingAccounts/{billingAccountId}/billingProfiles/{billingProfileId}' for
 // billingProfile scope
-func (client ReservationRecommendationDetailsClient) Get(ctx context.Context, scope string) (result ReservationRecommendationDetailsModel, err error) {
+// scope - scope of the reservation.
+// region - used to select the region the recommendation should be generated for.
+// term - specify length of reservation recommendation term.
+// lookBackPeriod - filter the time period on which reservation recommendation results are based.
+// product - filter the products for which reservation recommendation results are generated. Examples:
+// Standard_DS1_v2 (for VM), Premium_SSD_Managed_Disks_P30 (for Managed Disks)
+func (client ReservationRecommendationDetailsClient) Get(ctx context.Context, billingScope string, scope Scope11, region string, term Term, lookBackPeriod LookBackPeriod, product string) (result ReservationRecommendationDetailsModel, err error) {
 	if tracing.IsEnabled() {
 		ctx = tracing.StartSpan(ctx, fqdn+"/ReservationRecommendationDetailsClient.Get")
 		defer func() {
@@ -62,7 +68,7 @@ func (client ReservationRecommendationDetailsClient) Get(ctx context.Context, sc
 			tracing.EndSpan(ctx, sc, err)
 		}()
 	}
-	req, err := client.GetPreparer(ctx, scope)
+	req, err := client.GetPreparer(ctx, billingScope, scope, region, term, lookBackPeriod, product)
 	if err != nil {
 		err = autorest.NewErrorWithError(err, "consumption.ReservationRecommendationDetailsClient", "Get", nil, "Failure preparing request")
 		return
@@ -84,20 +90,25 @@ func (client ReservationRecommendationDetailsClient) Get(ctx context.Context, sc
 }
 
 // GetPreparer prepares the Get request.
-func (client ReservationRecommendationDetailsClient) GetPreparer(ctx context.Context, scope string) (*http.Request, error) {
+func (client ReservationRecommendationDetailsClient) GetPreparer(ctx context.Context, billingScope string, scope Scope11, region string, term Term, lookBackPeriod LookBackPeriod, product string) (*http.Request, error) {
 	pathParameters := map[string]interface{}{
-		"scope": scope,
+		"billingScope": billingScope,
 	}
 
 	const APIVersion = "2019-10-01"
 	queryParameters := map[string]interface{}{
-		"api-version": APIVersion,
+		"api-version":    APIVersion,
+		"lookBackPeriod": autorest.Encode("query", lookBackPeriod),
+		"product":        autorest.Encode("query", product),
+		"region":         autorest.Encode("query", region),
+		"scope":          autorest.Encode("query", scope),
+		"term":           autorest.Encode("query", term),
 	}
 
 	preparer := autorest.CreatePreparer(
 		autorest.AsGet(),
 		autorest.WithBaseURL(client.BaseURI),
-		autorest.WithPathParameters("/{scope}/providers/Microsoft.Consumption/reservationRecommendationDetails", pathParameters),
+		autorest.WithPathParameters("/{billingScope}/providers/Microsoft.Consumption/reservationRecommendationDetails", pathParameters),
 		autorest.WithQueryParameters(queryParameters))
 	return preparer.Prepare((&http.Request{}).WithContext(ctx))
 }

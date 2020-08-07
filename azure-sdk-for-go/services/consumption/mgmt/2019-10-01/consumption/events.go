@@ -77,6 +77,9 @@ func (client EventsClient) List(ctx context.Context, billingAccountID string, bi
 	if err != nil {
 		err = autorest.NewErrorWithError(err, "consumption.EventsClient", "List", resp, "Failure responding to request")
 	}
+	if result.e.hasNextLink() && result.e.IsEmpty() {
+		err = result.NextWithContext(ctx)
+	}
 
 	return
 }
