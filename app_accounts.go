@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	"github.com/Azure/azure-sdk-for-go/services/billing/mgmt/2020-05-01/billing"
+	"github.com/Azure/azure-sdk-for-go/services/preview/billing/mgmt/2020-05-01-preview/billing"
 	"github.com/spf13/cobra"
 	cmder "github.com/yaegashi/cobra-cmder"
 )

@@ -3,21 +3,17 @@ module github.com/yaegashi/azbill
 go 1.14
 
 require (
-	github.com/Azure/azure-sdk-for-go v44.2.0+incompatible
-	github.com/Azure/go-autorest/autorest v0.11.2
-	github.com/Azure/go-autorest/autorest/adal v0.9.0
-	github.com/Azure/go-autorest/autorest/azure/auth v0.5.0
+	github.com/Azure/azure-sdk-for-go v52.6.0+incompatible
+	github.com/Azure/go-autorest/autorest v0.11.18
+	github.com/Azure/go-autorest/autorest/adal v0.9.13
+	github.com/Azure/go-autorest/autorest/azure/auth v0.5.7
 	github.com/Azure/go-autorest/autorest/date v0.3.0
-	github.com/Azure/go-autorest/autorest/to v0.4.0
-	github.com/Azure/go-autorest/autorest/validation v0.3.0
-	github.com/Azure/go-autorest/tracing v0.6.0
+	github.com/Azure/go-autorest/autorest/to v0.4.0 // indirect
+	github.com/Azure/go-autorest/autorest/validation v0.3.1 // indirect
+	github.com/gofrs/uuid v4.0.0+incompatible // indirect
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
-	github.com/satori/go.uuid v1.2.0
 	github.com/shopspring/decimal v1.2.0
-	github.com/spf13/cobra v1.0.0
-	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/spf13/cobra v1.1.3
 	github.com/yaegashi/cobra-cmder v0.0.1
-	golang.org/x/crypto v0.0.0-20200728195943-123391ffb6de // indirect
-	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
+	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2 // indirect
 )

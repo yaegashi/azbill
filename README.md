@@ -241,10 +241,5 @@ and the API version not yet available in [Azure SDK for Go](https://github.com/A
 to acquire all the usage details including the reservation
 in [the consumption API](https://docs.microsoft.com/en-us/rest/api/consumption/).
 
-The shell script [gen.sh](./gen.sh) is used to generate the SDK code in local
-[azure-sdk-for-go](azure-sdk-for-go) directory using [the AutoRest CLI](https://github.com/Azure/autorest).
-You need to [install AutoRest](https://github.com/Azure/autorest/blob/master/docs/installing-autorest.md)
-to run it for yourself.
-
 The CLI command hierarchy is built with [spf13/cobra](https://github.com/spf13/cobra)
 and [yaegashi/cobra-comder](https://github.com/yaegashi/cobra-cmder).
