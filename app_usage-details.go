@@ -62,7 +62,7 @@ func (app *AppUsageDetails) RunE(cmd *cobra.Command, args []string) error {
 		scope = filepath.Join(scope, "providers/Microsoft.Billing/billingPeriods", app.BillingPeriod)
 	}
 	if scope == "" {
-		return fmt.Errorf("No scope specified")
+		return fmt.Errorf("no scope specified")
 	}
 
 	expand := "properties/additionalInfo,properties/meterDetails"
@@ -95,7 +95,7 @@ func (app *AppUsageDetails) RunE(cmd *cobra.Command, args []string) error {
 				return err
 			}
 		} else {
-			return fmt.Errorf("Unexpected type %T", x)
+			return fmt.Errorf("unexpected type %T", x)
 		}
 		err = r.NextWithContext(ctx)
 		if err != nil {

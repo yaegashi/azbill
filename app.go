@@ -123,7 +123,7 @@ func (app *App) PersistentPreRunE(cmd *cobra.Command, args []string) error {
 			app.Format = "json"
 			app.Pretty = true
 		default:
-			return fmt.Errorf("Unknown format: %s", f)
+			return fmt.Errorf("unknown format: %s", f)
 		}
 	}
 
@@ -175,7 +175,7 @@ func (app *App) Authorize() (autorest.Authorizer, error) {
 		}
 		return autorest.NewBearerAuthorizer(token), nil
 	}
-	return nil, fmt.Errorf("Unknown auth: %s", app.Auth)
+	return nil, fmt.Errorf("unknown auth: %s", app.Auth)
 }
 
 func (app *App) AuthorizeDeviceFlow() (autorest.Authorizer, error) {
