@@ -17,6 +17,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/spf13/cobra"
+	"github.com/yaegashi/azbill/mapconv"
 	"github.com/yaegashi/azbill/store"
 )
 
@@ -274,10 +275,12 @@ func (app *App) Progress(n int) {
 func (app *App) JSONMarshal(v interface{}) error {
 	var err error
 	if app.Flatten {
-		v, err = flattenToMap(v, true)
-		if err != nil {
-			return err
-		}
+		v, err = mapconv.Flatten(v, true)
+	} else {
+		v, err = mapconv.Nested(v, true)
+	}
+	if err != nil {
+		return err
 	}
 	enc := json.NewEncoder(app.Writer)
 	if app.Pretty {
@@ -293,7 +296,7 @@ func (app *App) JSONMarshal(v interface{}) error {
 
 func (app *App) CSVMarshal(v interface{}) error {
 	if app.Keys == nil {
-		m, _ := flattenToMap(v, false)
+		m, _ := mapconv.Flatten(v, false)
 		for key := range m {
 			app.Keys = append(app.Keys, key)
 		}
@@ -304,7 +307,7 @@ func (app *App) CSVMarshal(v interface{}) error {
 		}
 	}
 	row := []string{}
-	m, err := flattenToMap(v, true)
+	m, err := mapconv.Flatten(v, true)
 	if err != nil {
 		return err
 	}
