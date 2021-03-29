@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"reflect"
 	"sort"
@@ -16,6 +17,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
+	"github.com/globalsign/mgo"
 	"github.com/spf13/cobra"
 	"github.com/yaegashi/azbill/mapconv"
 	"github.com/yaegashi/azbill/store"
@@ -39,25 +41,33 @@ const (
 )
 
 type App struct {
-	Writer      io.WriteCloser
-	CSVWriter   *csv.Writer
-	ConfigStore *store.Store
-	ConfigDir   string
-	Output      string
-	Auth        string
-	AuthDev     string
-	AuthFile    string
-	Client      string
-	Tenant      string
-	Format      string
-	Flatten     bool
-	Pretty      bool
-	IsStdout    bool
-	Quiet       bool
-	Records     int
-	Column      int
-	Keys        []string
-	StartTime   time.Time
+	Writer          io.WriteCloser
+	CSVWriter       *csv.Writer
+	MGOSession      *mgo.Session
+	MGOCollection   *mgo.Collection
+	ConfigStore     *store.Store
+	Marshal         func(interface{}, ...func(map[string]interface{}) error) error
+	Convert         func(interface{}, bool) (map[string]interface{}, error)
+	ConfigDir       string
+	Output          string
+	MongoURI        string
+	MongoDB         string
+	MongoCollection string
+	MongoDrop       bool
+	Auth            string
+	AuthDev         string
+	AuthFile        string
+	Client          string
+	Tenant          string
+	Format          string
+	Flatten         bool
+	Pretty          bool
+	IsStdout        bool
+	Quiet           bool
+	Records         int
+	Column          int
+	Keys            []string
+	StartTime       time.Time
 }
 
 func (app *App) Cmd() *cobra.Command {
@@ -75,7 +85,11 @@ func (app *App) Cmd() *cobra.Command {
 	cmd.PersistentFlags().StringVarP(&app.AuthFile, "auth-file", "", "", envHelp("auth file store", environAuthFile, defaultAuthFile))
 	cmd.PersistentFlags().StringVarP(&app.AuthDev, "auth-dev", "", "", envHelp("auth dev store", environAuthDev, defaultAuthDev))
 	cmd.PersistentFlags().StringVarP(&app.Format, "format", "", "", envHelp("output format [csv,json,flatten,pretty]", environFormat, defaultFormat))
-	cmd.PersistentFlags().StringVarP(&app.Output, "output", "o", "", "output file")
+	cmd.PersistentFlags().StringVarP(&app.Output, "output", "o", "", "output file path")
+	cmd.PersistentFlags().StringVarP(&app.MongoURI, "mongo-uri", "", "", "output MongoDB URI")
+	cmd.PersistentFlags().StringVarP(&app.MongoDB, "mongo-db", "", "", "output MongoDB database")
+	cmd.PersistentFlags().StringVarP(&app.MongoCollection, "mongo-collection", "", "", "output MongoDB collection")
+	cmd.PersistentFlags().BoolVarP(&app.MongoDrop, "mongo-drop", "", false, "drop the existing MongoDB collection")
 	cmd.PersistentFlags().BoolVarP(&app.Quiet, "quiet", "q", false, "quiet")
 	return cmd
 }
@@ -109,7 +123,7 @@ func (app *App) PersistentPreRunE(cmd *cobra.Command, args []string) error {
 	}
 	app.ConfigStore = store
 
-	app.IsStdout = app.Output == "" || app.Output == "-"
+	app.IsStdout = app.MongoURI == "" && (app.Output == "" || app.Output == "-")
 
 	for _, f := range strings.Split(strings.ToLower(app.Format), ",") {
 		switch f {
@@ -198,30 +212,83 @@ func (app *App) AuthorizeDeviceFlow() (autorest.Authorizer, error) {
 }
 
 func (app *App) Open() error {
-	format := app.Format
-	if format == "json" {
-		if app.Flatten {
-			format += ",flatten"
-		}
-		if app.Pretty {
-			format += ",pretty"
-		}
-	}
-	if app.IsStdout {
-		app.Writer = os.Stdout
-		app.Logf("Writing to stdout in %s", format)
-	} else {
-		w, err := os.Create(app.Output)
+	if app.MongoURI != "" {
+		u, err := url.Parse(app.MongoURI)
 		if err != nil {
 			return err
 		}
-		app.Writer = w
-		app.Logf("Writing to %q in %s", app.Output, format)
+		if u.Scheme != "mongodb" {
+			return fmt.Errorf("invalid --mongo-uri")
+		}
+		if app.MongoDB == "" || app.MongoCollection == "" {
+			return fmt.Errorf("empty --mongo-db or --mongo-collection")
+		}
+		if u.User != nil {
+			user := u.User.Username()
+			if _, ok := u.User.Password(); ok {
+				u.User = url.UserPassword(user, "REDACTED")
+
+			} else {
+				u.User = url.User(user)
+			}
+		}
+		app.Logf(
+			"Writing to MongoDB uri:%q db:%q collection:%q drop:%v",
+			u.String(),
+			app.MongoDB,
+			app.MongoCollection,
+			app.MongoDrop,
+		)
+		s, err := mgo.Dial(app.MongoURI)
+		if err != nil {
+			return err
+		}
+		c := s.DB(app.MongoDB).C(app.MongoCollection)
+		if app.MongoDrop {
+			err = c.DropCollection()
+			// Ignore when the collection doesn't exist
+			if err != nil && err.Error() != "ns not found" {
+				return err
+			}
+		}
+		app.MGOSession = s
+		app.MGOCollection = c
+		app.Format = "json"
+		app.Marshal = app.JSONMarshal
+	} else {
+		format := app.Format
+		if format == "json" {
+			if app.Flatten {
+				format += ",flatten"
+			}
+			if app.Pretty {
+				format += ",pretty"
+			}
+		}
+		if app.IsStdout {
+			app.Writer = os.Stdout
+			app.Logf("Writing to stdout in %s", format)
+		} else {
+			app.Logf("Writing to file %q in %s", app.Output, format)
+			w, err := os.Create(app.Output)
+			if err != nil {
+				return err
+			}
+			app.Writer = w
+		}
+		if app.Format == "csv" {
+			app.Marshal = app.CSVMarshal
+			app.CSVWriter = csv.NewWriter(app.Writer)
+			app.CSVWriter.UseCRLF = true
+			app.Writer.Write([]byte{0xef, 0xbb, 0xbf}) // UTF-8 BOM
+		} else {
+			app.Marshal = app.JSONMarshal
+		}
 	}
-	if app.Format == "csv" {
-		app.CSVWriter = csv.NewWriter(app.Writer)
-		app.CSVWriter.UseCRLF = true
-		app.Writer.Write([]byte{0xef, 0xbb, 0xbf}) // UTF-8 BOM
+	if app.Flatten {
+		app.Convert = mapconv.Flatten
+	} else {
+		app.Convert = mapconv.Nested
 	}
 	app.Keys = nil
 	app.Records = 0
@@ -230,10 +297,10 @@ func (app *App) Open() error {
 }
 
 func (app *App) Close() {
-	if app.Format == "csv" {
+	if app.CSVWriter != nil {
 		app.CSVWriter.Flush()
 	}
-	if !app.IsStdout {
+	if app.Writer != nil && !app.IsStdout {
 		app.Writer.Close()
 	}
 	app.Progress(0)
@@ -272,29 +339,37 @@ func (app *App) Progress(n int) {
 	}
 }
 
-func (app *App) JSONMarshal(v interface{}) error {
-	var err error
-	if app.Flatten {
-		v, err = mapconv.Flatten(v, true)
+func (app *App) JSONMarshal(v interface{}, mods ...func(map[string]interface{}) error) error {
+	m, err := app.Convert(v, true)
+	if err != nil {
+		return err
+	}
+	for _, mod := range mods {
+		err = mod(m)
+		if err != nil {
+			return err
+		}
+	}
+	if app.MGOCollection != nil {
+		err = app.MGOCollection.Insert(v)
+		if err != nil {
+			return err
+		}
 	} else {
-		v, err = mapconv.Nested(v, true)
-	}
-	if err != nil {
-		return err
-	}
-	enc := json.NewEncoder(app.Writer)
-	if app.Pretty {
-		enc.SetIndent("", "  ")
-	}
-	err = enc.Encode(v)
-	if err != nil {
-		return err
+		enc := json.NewEncoder(app.Writer)
+		if app.Pretty {
+			enc.SetIndent("", "  ")
+		}
+		err = enc.Encode(v)
+		if err != nil {
+			return err
+		}
 	}
 	app.Progress(1)
 	return nil
 }
 
-func (app *App) CSVMarshal(v interface{}) error {
+func (app *App) CSVMarshal(v interface{}, mods ...func(map[string]interface{}) error) error {
 	if app.Keys == nil {
 		m, _ := mapconv.Flatten(v, false)
 		for key := range m {
@@ -310,6 +385,12 @@ func (app *App) CSVMarshal(v interface{}) error {
 	m, err := mapconv.Flatten(v, true)
 	if err != nil {
 		return err
+	}
+	for _, mod := range mods {
+		err = mod(m)
+		if err != nil {
+			return err
+		}
 	}
 	for _, key := range app.Keys {
 		col := ""
@@ -343,15 +424,6 @@ func (app *App) CSVMarshal(v interface{}) error {
 	}
 	app.Progress(1)
 	return nil
-}
-
-func (app *App) Marshal(v interface{}) error {
-	switch app.Format {
-	case "csv":
-		return app.CSVMarshal(v)
-	default:
-		return app.JSONMarshal(v)
-	}
 }
 
 func (app *App) Write(b []byte) (int, error) {
