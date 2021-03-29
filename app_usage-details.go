@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 
+	"github.com/Azure/azure-sdk-for-go/services/consumption/mgmt/2019-10-01/consumption"
 	"github.com/spf13/cobra"
-	"github.com/yaegashi/azbill/azure-sdk-for-go/services/consumption/mgmt/2019-10-01/consumption"
 	cmder "github.com/yaegashi/cobra-cmder"
 )
 
@@ -47,6 +48,12 @@ func (app *AppUsageDetails) RunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	err = app.Open()
+	if err != nil {
+		return err
+	}
+	defer app.Close()
+
 	ctx := context.Background()
 	usageDetailsClient := consumption.NewUsageDetailsClient("")
 	usageDetailsClient.Authorizer = authorizer
@@ -62,7 +69,7 @@ func (app *AppUsageDetails) RunE(cmd *cobra.Command, args []string) error {
 		scope = filepath.Join(scope, "providers/Microsoft.Billing/billingPeriods", app.BillingPeriod)
 	}
 	if scope == "" {
-		return fmt.Errorf("No scope specified")
+		return fmt.Errorf("no scope specified")
 	}
 
 	expand := "properties/additionalInfo,properties/meterDetails"
@@ -80,22 +87,44 @@ func (app *AppUsageDetails) RunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	err = app.Open()
-	if err != nil {
-		return err
+	var mod func(map[string]interface{}) error
+	if app.Flatten {
+		mod = func(m1 map[string]interface{}) error {
+			if m2, ok := m1["tags"].(map[string]*string); ok {
+				s := "{}"
+				if m2 != nil {
+					if b, err := json.Marshal(m2); err == nil {
+						s = string(b)
+					}
+				}
+				m1["tags"] = s
+			}
+			return nil
+		}
+	} else {
+		mod = func(m1 map[string]interface{}) error {
+			if m2, ok := m1["properties"].(map[string]interface{}); ok {
+				if m3, ok := m2["additionalInfo"].(string); ok {
+					var m4 map[string]interface{}
+					if json.Unmarshal([]byte(m3), &m4) == nil {
+						m2["additionalInfo"] = m4
+					}
+				}
+			}
+			return nil
+		}
 	}
-	defer app.Close()
 
 	for r.NotDone() {
 		x := r.Value()
 		if v, ok := x.AsLegacyUsageDetail(); ok {
 			type LegacyUsageDetail consumption.LegacyUsageDetail
-			err = app.Marshal((*LegacyUsageDetail)(v))
+			err = app.Marshal((*LegacyUsageDetail)(v), mod)
 			if err != nil {
 				return err
 			}
 		} else {
-			return fmt.Errorf("Unexpected type %T", x)
+			return fmt.Errorf("unexpected type %T", x)
 		}
 		err = r.NextWithContext(ctx)
 		if err != nil {

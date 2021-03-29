@@ -1,19 +1,14 @@
-package main
+package mapconv
 
 import (
 	"fmt"
 	"reflect"
 	"strings"
 	"unicode"
-
-	"github.com/Azure/go-autorest/autorest/date"
-	"github.com/shopspring/decimal"
 )
 
-var timeType = reflect.TypeOf(date.Time{})
-var decimalType = reflect.TypeOf(decimal.Decimal{})
-
-func flattenToMapRec(v reflect.Value, prefix string, omit bool, m map[string]interface{}) error {
+func NestedRec(v reflect.Value, omit bool) (map[string]interface{}, error) {
+	m := map[string]interface{}{}
 	for v.Kind() == reflect.Ptr {
 		if v.IsNil() {
 			v = reflect.Zero(v.Type().Elem())
@@ -46,16 +41,22 @@ fieldLoop:
 			}
 			fv = fv.Elem()
 		}
-		if fv.Type() != timeType && fv.Type() != decimalType && fv.Kind() == reflect.Struct {
-			flattenToMapRec(fv, prefix+name+".", omit, m)
+		if fvt := fv.Type(); fvt == TimeType || fvt == DecimalType || fvt == UUIDType {
+			m[name] = fmt.Sprint(fv.Interface())
+		} else if fv.Kind() == reflect.Struct {
+			fvMap, err := NestedRec(fv, omit)
+			if err != nil {
+				return nil, err
+			}
+			m[name] = fvMap
 		} else {
-			m[prefix+name] = fv.Interface()
+			m[name] = fv.Interface()
 		}
 	}
-	return nil
+	return m, nil
 }
 
-func flattenToMap(x interface{}, omit bool) (map[string]interface{}, error) {
+func Nested(x interface{}, omit bool) (map[string]interface{}, error) {
 	t := reflect.TypeOf(x)
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -63,10 +64,5 @@ func flattenToMap(x interface{}, omit bool) (map[string]interface{}, error) {
 	if t.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("input type should be struct, got %T", x)
 	}
-	m := map[string]interface{}{}
-	err := flattenToMapRec(reflect.ValueOf(x), "", omit, m)
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+	return NestedRec(reflect.ValueOf(x), omit)
 }
