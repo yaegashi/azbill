@@ -29,17 +29,21 @@ Available Commands:
   usage-details List usage details
 
 Flags:
-      --auth string         auth source [dev,env,file,cli] (env:AZBILL_AUTH, default:dev)
-      --auth-dev string     auth dev store (env:AZBILL_AUTH_DEV, default:auth_dev.json)
-      --auth-file string    auth file store (env:AZBILL_AUTH_FILE, default:auth_file.json)
-      --client string       Azure client (env:AZURE_CLIENT_ID, default:4a034c56-da44-48ce-90db-039a408974bd)
-      --config-dir string   config dir (env:AZBILL_CONFIG_DIR, default:~/.azbill)
-      --format string       output format [csv,json,flatten,pretty] (env:AZBILL_FORMAT, default:csv)
-  -h, --help                help for azbill
-  -o, --output string       output file
-  -q, --quiet               quiet
-      --tenant string       Azure tenant (env:AZURE_TENANT_ID, default:common)
-  -v, --version             version for azbill
+      --auth string               auth source [dev,env,file,cli] (env:AZBILL_AUTH, default:dev)
+      --auth-dev string           auth dev store (env:AZBILL_AUTH_DEV, default:auth_dev.json)
+      --auth-file string          auth file store (env:AZBILL_AUTH_FILE, default:auth_file.json)
+      --client string             Azure client (env:AZURE_CLIENT_ID, default:4a034c56-da44-48ce-90db-039a408974bd)
+      --config-dir string         config dir (env:AZBILL_CONFIG_DIR, default:~/.azbill)
+      --format string             output format [csv,json,flatten,pretty] (env:AZBILL_FORMAT, default:csv)
+  -h, --help                      help for azbill
+      --mongo-collection string   output MongoDB collection
+      --mongo-db string           output MongoDB database
+      --mongo-drop                drop the existing MongoDB collection
+      --mongo-uri string          output MongoDB URI
+  -o, --output string             output file path
+  -q, --quiet                     quiet
+      --tenant string             Azure tenant (env:AZURE_TENANT_ID, default:common)
+  -v, --version                   version for azbill
 
 Use "azbill [command] --help" for more information about a command.
 ```
@@ -165,9 +169,9 @@ With `--format flatten`, the output is a series of JSON objects like the followi
 
 It's like `json` but all nested objects are flatten to form a single object.
 
-### csv (default)
+### csv
 
-With `--format csv` (default), the output is CSV records like the following:
+With `--format csv`, the output is CSV records like the following:
 
 ```csv
 id,kind,name,properties.accountName,properties.accountOwnerId,properties.additionalInfo,properties.billingAccountId,properties.billingAccountName,properties.billingCurrency,properties.billingPeriodEndDate,properties.billingPeriodStartDate,properties.billingProfileId,properties.billingProfileName,properties.chargeType,properties.consumedService,properties.cost,properties.costCenter,properties.date,properties.effectivePrice,properties.frequency,properties.invoiceSection,properties.isAzureCreditEligible,properties.meterDetails.meterCategory,properties.meterDetails.meterName,properties.meterDetails.meterSubCategory,properties.meterDetails.serviceFamily,properties.meterDetails.unitOfMeasure,properties.meterId,properties.offerId,properties.partNumber,properties.planName,properties.product,properties.productOrderId,properties.productOrderName,properties.publisherName,properties.publisherType,properties.quantity,properties.reservationId,properties.reservationName,properties.resourceGroup,properties.resourceId,properties.resourceLocation,properties.resourceName,properties.serviceInfo1,properties.serviceInfo2,properties.subscriptionId,properties.subscriptionName,properties.term,properties.unitPrice,tags,type
@@ -178,6 +182,26 @@ The first line is the CSV header based on JSON object keys of `flatten` format.
 The attributes omit due to empty values in `flatten` format are all present in it.
 The encoding is UTF-8 with BOM, the line ending is CRLF.
 You should be able to directly open it with Microsoft Excel.
+
+## Output destination
+
+### File or standard output
+
+azbill makes the output into a file specified by `--output`.
+If `--output` is not specified, it writes to the standard output.
+
+`--format` defaults to `csv`.
+
+### MongoDB
+
+With `--mongo-uri`, azbill connects to the MongoDB server and makes the output there.
+`--output` is ignored.
+
+It also requires `--mongo-db` and `--mongo-collection` for the MongoDB output to work.
+Specify `--mongo-drop` to drop the existing collection before writing.
+
+`--format` should be `json` (default) or `flatten`.
+It writes a document for every JSON object.  
 
 ## Examples
 
