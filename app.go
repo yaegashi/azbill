@@ -351,7 +351,7 @@ func (app *App) JSONMarshal(v interface{}, mods ...func(map[string]interface{}) 
 		}
 	}
 	if app.MGOCollection != nil {
-		err = app.MGOCollection.Insert(v)
+		err = app.MGOCollection.Insert(m)
 		if err != nil {
 			return err
 		}
@@ -360,7 +360,7 @@ func (app *App) JSONMarshal(v interface{}, mods ...func(map[string]interface{}) 
 		if app.Pretty {
 			enc.SetIndent("", "  ")
 		}
-		err = enc.Encode(v)
+		err = enc.Encode(m)
 		if err != nil {
 			return err
 		}
