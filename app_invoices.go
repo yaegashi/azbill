@@ -63,15 +63,15 @@ func (app *AppInvoices) RunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	err = app.Open()
+	err = app.Open(ctx)
 	if err != nil {
 		return err
 	}
-	defer app.Close()
+	defer app.Close(ctx)
 
 	for r.NotDone() {
 		type invoice billing.Invoice
-		err = app.Marshal(invoice(r.Value()))
+		err = app.Marshal(ctx, invoice(r.Value()))
 		if err != nil {
 			return err
 		}
