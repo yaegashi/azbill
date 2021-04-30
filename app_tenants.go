@@ -47,15 +47,15 @@ func (app *AppTenants) RunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	err = app.Open()
+	err = app.Open(ctx)
 	if err != nil {
 		return err
 	}
-	defer app.Close()
+	defer app.Close(ctx)
 
 	for r.NotDone() {
 		type tenant subscriptions.TenantIDDescription
-		err = app.Marshal(tenant(r.Value()))
+		err = app.Marshal(ctx, tenant(r.Value()))
 		if err != nil {
 			return err
 		}

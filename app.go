@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -17,10 +18,11 @@ import (
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
-	"github.com/globalsign/mgo"
 	"github.com/spf13/cobra"
 	"github.com/yaegashi/azbill/mapconv"
 	"github.com/yaegashi/azbill/store"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 const (
@@ -43,10 +45,10 @@ const (
 type App struct {
 	Writer          io.WriteCloser
 	CSVWriter       *csv.Writer
-	MGOSession      *mgo.Session
-	MGOCollection   *mgo.Collection
+	MongoCli        *mongo.Client
+	MongoCol        *mongo.Collection
 	ConfigStore     *store.Store
-	Marshal         func(interface{}, ...func(map[string]interface{}) error) error
+	Marshal         func(context.Context, interface{}, ...func(map[string]interface{}) error) error
 	Convert         func(interface{}, bool) (map[string]interface{}, error)
 	ConfigDir       string
 	Output          string
@@ -211,7 +213,7 @@ func (app *App) AuthorizeDeviceFlow() (autorest.Authorizer, error) {
 	return autorest.NewBearerAuthorizer(token), nil
 }
 
-func (app *App) Open() error {
+func (app *App) Open(ctx context.Context) error {
 	if app.MongoURI != "" {
 		u, err := url.Parse(app.MongoURI)
 		if err != nil {
@@ -239,20 +241,19 @@ func (app *App) Open() error {
 			app.MongoCollection,
 			app.MongoDrop,
 		)
-		s, err := mgo.Dial(app.MongoURI)
+		mongoCli, err := mongo.Connect(ctx, options.Client().ApplyURI(app.MongoURI))
 		if err != nil {
 			return err
 		}
-		c := s.DB(app.MongoDB).C(app.MongoCollection)
+		mongoCol := mongoCli.Database(app.MongoDB).Collection(app.MongoCollection)
 		if app.MongoDrop {
-			err = c.DropCollection()
-			// Ignore when the collection doesn't exist
-			if err != nil && err.Error() != "ns not found" {
+			err = mongoCol.Drop(ctx)
+			if err != nil {
 				return err
 			}
 		}
-		app.MGOSession = s
-		app.MGOCollection = c
+		app.MongoCli = mongoCli
+		app.MongoCol = mongoCol
 		app.Format = "json"
 		app.Marshal = app.JSONMarshal
 	} else {
@@ -296,12 +297,15 @@ func (app *App) Open() error {
 	return nil
 }
 
-func (app *App) Close() {
+func (app *App) Close(ctx context.Context) {
 	if app.CSVWriter != nil {
 		app.CSVWriter.Flush()
 	}
 	if app.Writer != nil && !app.IsStdout {
 		app.Writer.Close()
+	}
+	if app.MongoCol != nil {
+		app.MongoCli.Disconnect(ctx)
 	}
 	app.Progress(0)
 	endTime := time.Now()
@@ -339,7 +343,7 @@ func (app *App) Progress(n int) {
 	}
 }
 
-func (app *App) JSONMarshal(v interface{}, mods ...func(map[string]interface{}) error) error {
+func (app *App) JSONMarshal(ctx context.Context, v interface{}, mods ...func(map[string]interface{}) error) error {
 	m, err := app.Convert(v, true)
 	if err != nil {
 		return err
@@ -350,8 +354,8 @@ func (app *App) JSONMarshal(v interface{}, mods ...func(map[string]interface{}) 
 			return err
 		}
 	}
-	if app.MGOCollection != nil {
-		err = app.MGOCollection.Insert(m)
+	if app.MongoCol != nil {
+		_, err = app.MongoCol.InsertOne(ctx, m)
 		if err != nil {
 			return err
 		}
@@ -369,7 +373,7 @@ func (app *App) JSONMarshal(v interface{}, mods ...func(map[string]interface{}) 
 	return nil
 }
 
-func (app *App) CSVMarshal(v interface{}, mods ...func(map[string]interface{}) error) error {
+func (app *App) CSVMarshal(ctx context.Context, v interface{}, mods ...func(map[string]interface{}) error) error {
 	if app.Keys == nil {
 		m, _ := mapconv.Flatten(v, false)
 		for key := range m {

@@ -47,15 +47,15 @@ func (app *AppSubscriptions) RunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	err = app.Open()
+	err = app.Open(ctx)
 	if err != nil {
 		return err
 	}
-	defer app.Close()
+	defer app.Close(ctx)
 
 	for r.NotDone() {
 		type subscription subscriptions.Subscription
-		err = app.Marshal(subscription(r.Value()))
+		err = app.Marshal(ctx, subscription(r.Value()))
 		if err != nil {
 			return err
 		}

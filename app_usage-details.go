@@ -48,13 +48,13 @@ func (app *AppUsageDetails) RunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	err = app.Open()
+	ctx := context.Background()
+	err = app.Open(ctx)
 	if err != nil {
 		return err
 	}
-	defer app.Close()
+	defer app.Close(ctx)
 
-	ctx := context.Background()
 	usageDetailsClient := consumption.NewUsageDetailsClient("")
 	usageDetailsClient.Authorizer = authorizer
 
@@ -119,7 +119,7 @@ func (app *AppUsageDetails) RunE(cmd *cobra.Command, args []string) error {
 		x := r.Value()
 		if v, ok := x.AsLegacyUsageDetail(); ok {
 			type LegacyUsageDetail consumption.LegacyUsageDetail
-			err = app.Marshal((*LegacyUsageDetail)(v), mod)
+			err = app.Marshal(ctx, (*LegacyUsageDetail)(v), mod)
 			if err != nil {
 				return err
 			}
